@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Clock, BookOpen, AlertCircle, CalendarRange, Layers, Loader2, Info, Timer, CalendarDays, ArrowLeftRight, CheckCircle, ChevronDown, Printer } from 'lucide-react';
 import { Grade, ClassSession, ExamEntry } from '../types';
-import { supabase } from '../constants';
+import { githubStorage } from '../services/githubStorage';
 
 // Official Al-Azhar Preparatory Stage Exams (المرحلة الإعدادية بنين)
 const OFFICIAL_EXAMS_PREP: ExamEntry[] = [
@@ -45,10 +45,7 @@ const ScheduleScreen: React.FC = () => {
   const fetchSchedules = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase.from('schedules').select('*');
-      if (error) throw error;
-      const map: any = {};
-      data?.forEach(row => { map[row.grade] = { classes: row.classes, exams: row.exams }; });
+      const map = await githubStorage.getAllSchedules();
       setSchedules(map);
     } catch (e) {
       console.error(e);

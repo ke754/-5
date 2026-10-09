@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Star, ShieldCheck, GraduationCap, Award, Info, Loader2, MessageSquare, User, Send, AlertCircle, CheckCircle2, Images, X, ChevronRight, ChevronLeft, PlayCircle, Sparkles, Clock, Calendar, Phone, MessageCircle, Image as ImageIcon, MapPin, BookOpen, Quote, Heart, Volume2, Bookmark, Check } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { NewsItem, NewsComment } from '../types';
-import { supabase } from '../constants';
+import { githubStorage } from '../services/githubStorage';
 
 const HomeScreen: React.FC = () => {
   const [news, setNews] = useState<NewsItem[]>([]);
@@ -17,12 +17,8 @@ const HomeScreen: React.FC = () => {
   const fetchNews = async () => {
     try {
       setLoading(true);
-      const { data: newsData } = await supabase.from('news').select('*').order('created_at', { ascending: false });
-      const mapped = (newsData || []).map((item: any) => ({
-        ...item,
-        mediaUrls: item.media_urls || (item.media_url ? [item.media_url] : []),
-      }));
-      setNews(mapped);
+      const newsList = await githubStorage.getNews();
+      setNews(newsList);
     } catch (err) {
       console.error(err);
     } finally {

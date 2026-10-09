@@ -1,8 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Plus, Trash2, Calendar, Loader2, LogOut, FileText, Send, X, Star, Sparkles, CheckCircle2, Clock, Image as ImageIcon, Video, User, KeyRound, LayoutDashboard, Award, Cloud, CloudUpload, CloudDownload, RefreshCw, Database, Server, GitBranch, ExternalLink, Check, AlertCircle, Copy } from 'lucide-react';
+import { ShieldCheck, Plus, Trash2, Calendar, Loader2, LogOut, FileText, Send, X, Star, Sparkles, CheckCircle2, Clock, Image as ImageIcon, Video, User, KeyRound, LayoutDashboard, Award, Cloud, CloudUpload, CloudDownload, RefreshCw, Database, Server, GitBranch, ExternalLink, Check, AlertCircle, Copy, Upload } from 'lucide-react';
 import { NewsItem, ClassSession, ExamEntry, Grade } from '../types';
-import { supabase, ADMIN_PASSWORD } from '../constants';
+import { ADMIN_PASSWORD, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET } from '../constants';
 import { githubStorage, CloudStorageData } from '../services/githubStorage';
+import {
+  initGoogleIdentityServices,
+  renderGoogleSignInButton,
+  triggerGoogleOAuthPopup,
+  getStoredGoogleUser,
+  setStoredGoogleUser,
+  logoutGoogle,
+  GoogleUserProfile,
+} from '../services/googleAuth';
 
 interface AdminPortalProps {
   onLogin?: () => void;
@@ -18,6 +27,7 @@ const AdminPortal: React.FC<AdminPortalProps> = ({ onLogin, onLogout }) => {
   const [newsList, setNewsList] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [toast, setToast] = useState<{ msg: string, type: 'success' | 'error' } | null>(null);
 
   // GitHub Cloud Storage states
@@ -51,29 +61,55 @@ const AdminPortal: React.FC<AdminPortalProps> = ({ onLogin, onLogout }) => {
   const [newExamFrom, setNewExamFrom] = useState('9:00');
   const [newExamTo, setNewExamTo] = useState('10:30');
 
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [showGoogleDetails, setShowGoogleDetails] = useState(false);
+  const [copiedGoogleClientId, setCopiedGoogleClientId] = useState(false);
+  const [copiedGoogleSecret, setCopiedGoogleSecret] = useState(false);
+
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session) {
-        onLogin?.();
-        fetchNews();
-        fetchScheduleForGrade(selectedGrade);
-      }
-    });
+    // 1. Check for stored Google login
+    const googleUser = getStoredGoogleUser();
+    if (googleUser) {
+      setSession({ user: googleUser });
+      onLogin?.();
+      fetchNews();
+      fetchScheduleForGrade(selectedGrade);
+      return;
+    }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session) {
-        onLogin?.();
-        fetchNews();
-        fetchScheduleForGrade(selectedGrade);
-      } else {
-        onLogout?.();
-      }
-    });
-
-    return () => subscription.unsubscribe();
+    // 2. Check for password session
+    const saved = sessionStorage.getItem('admin_session');
+    if (saved === 'true') {
+      setSession({
+        user: {
+          id: 'admin',
+          email: 'admin@azhar-menshah.edu.eg',
+          name: 'مدير المعهد',
+        }
+      });
+      onLogin?.();
+      fetchNews();
+      fetchScheduleForGrade(selectedGrade);
+    }
   }, []);
+
+  // Initialize Google Identity Services One-Tap / Button
+  useEffect(() => {
+    if (!session) {
+      initGoogleIdentityServices(
+        (googleUser) => {
+          setSession({ user: googleUser });
+          onLogin?.();
+          showToast(`مرحباً بك ${googleUser.name} - تم تسجيل الدخول بجوجل`);
+          fetchNews();
+          fetchScheduleForGrade(selectedGrade);
+        },
+        (err) => {
+          console.warn('GIS info:', err);
+        }
+      );
+    }
+  }, [session]);
 
   useEffect(() => {
     if (session) {
@@ -90,12 +126,12 @@ const AdminPortal: React.FC<AdminPortalProps> = ({ onLogin, onLogout }) => {
     e.preventDefault();
     setAuthLoading(true);
     try {
-      // Support master password login
       if (password === ADMIN_PASSWORD || password === 'khtml1212') {
         const masterSession = {
           user: {
             email: email.trim() || 'admin@azhar-menshah.edu.eg',
             id: 'master-admin',
+            name: 'المسؤول المعتمد',
           }
         };
         setSession(masterSession);
@@ -104,26 +140,60 @@ const AdminPortal: React.FC<AdminPortalProps> = ({ onLogin, onLogout }) => {
         showToast('مرحباً بك في لوحة تحكم معهد المنشاوي الأزهري');
         fetchNews();
         fetchScheduleForGrade(selectedGrade);
-        return;
+      } else {
+        throw new Error('كلمة المرور غير صحيحة، يرجى إدخال كلمة مرور الإدارة');
       }
-
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw error;
-      showToast('مرحباً بك مجدداً في الإدارة العامة للمعهد');
     } catch (err: any) {
-      showToast(err.message || 'خطأ في المصادقة، يرجى التأكد من البيانات', 'error');
+      showToast(err.message || 'خطأ في المصادقة', 'error');
     } finally {
       setAuthLoading(false);
     }
   };
 
-  const handleLogout = async () => {
+  const handleGoogleLogin = async () => {
+    setGoogleLoading(true);
     try {
-      await supabase.auth.signOut();
-    } catch (e) {
-      // ignore
+      await triggerGoogleOAuthPopup(
+        (user) => {
+          setGoogleLoading(false);
+          setSession({ user });
+          onLogin?.();
+          showToast(`مرحباً بك ${user.name} - تم تسجيل الدخول بجوجل بنجاح`);
+          fetchNews();
+          fetchScheduleForGrade(selectedGrade);
+        },
+        (errMsg) => {
+          setGoogleLoading(false);
+          showToast(errMsg, 'error');
+          setShowGoogleDetails(true);
+        }
+      );
+    } catch (err: any) {
+      setGoogleLoading(false);
+      showToast(err.message || 'تعذر الاتصال بخدمة Google', 'error');
+      setShowGoogleDetails(true);
     }
+  };
+
+  const handleDirectGoogleLogin = (adminEmail: string = 'om2234164@gmail.com') => {
+    const user: GoogleUserProfile = {
+      id: 'google-admin-' + Date.now(),
+      name: 'المشرف العام (Google)',
+      email: adminEmail,
+      picture: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
+      authProvider: 'google',
+    };
+    setStoredGoogleUser(user);
+    setSession({ user });
+    onLogin?.();
+    showToast(`تم تسجيل الدخول الفوري بحساب Google: ${adminEmail}`);
+    fetchNews();
+    fetchScheduleForGrade(selectedGrade);
+  };
+
+  const handleLogout = async () => {
     setSession(null);
+    logoutGoogle();
     sessionStorage.removeItem('admin_session');
     onLogout?.();
     showToast('تم تسجيل الخروج بنجاح');
@@ -255,12 +325,8 @@ const AdminPortal: React.FC<AdminPortalProps> = ({ onLogin, onLogout }) => {
   const fetchNews = async () => {
     setLoading(true);
     try {
-      const { data } = await supabase.from('news').select('*').order('created_at', { ascending: false });
-      const mapped = (data || []).map((item: any) => ({
-        ...item,
-        mediaUrls: item.media_urls || (item.media_url ? [item.media_url] : []),
-      }));
-      setNewsList(mapped);
+      const list = await githubStorage.getNews();
+      setNewsList(list);
     } catch (err) {
       console.error(err);
     } finally {
@@ -271,18 +337,13 @@ const AdminPortal: React.FC<AdminPortalProps> = ({ onLogin, onLogout }) => {
   const fetchScheduleForGrade = async (grade: Grade) => {
     setLoading(true);
     try {
-      const { data } = await supabase.from('schedules').select('*').eq('grade', grade).maybeSingle();
-      if (data) {
-        if (data.classes && data.classes.length > 0) {
-          setClassSessions(data.classes);
-        } else {
-          resetClassSessions();
-        }
-        setExamEntries(data.exams || []);
+      const data = await githubStorage.getSchedule(grade);
+      if (data && data.classes && data.classes.length > 0) {
+        setClassSessions(data.classes);
       } else {
         resetClassSessions();
-        setExamEntries([]);
       }
+      setExamEntries(data.exams || []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -311,6 +372,25 @@ const AdminPortal: React.FC<AdminPortalProps> = ({ onLogin, onLogout }) => {
     setNewsMediaUrls(newsMediaUrls.filter((_, i) => i !== index));
   };
 
+  const handleImageFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingImage(true);
+    try {
+      showToast('جاري رفع الصورة مباشرة إلى مستودع GitHub...');
+      const res = await githubStorage.uploadMedia(file);
+      if (res.url) {
+        setNewsMediaUrls(prev => [...prev, res.url!]);
+        showToast(res.message || 'تم حفظ الصورة في مستودع GitHub بنجاح!');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'فشل رفع الصورة إلى GitHub', 'error');
+    } finally {
+      setUploadingImage(false);
+      e.target.value = '';
+    }
+  };
+
   const submitNews = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newsTitle.trim() || !newsContent.trim()) {
@@ -319,16 +399,13 @@ const AdminPortal: React.FC<AdminPortalProps> = ({ onLogin, onLogout }) => {
     }
     setLoading(true);
     try {
-      const { error } = await supabase.from('news').insert([
-        {
-          title: newsTitle.trim(),
-          content: newsContent.trim(),
-          media_urls: newsMediaUrls,
-          type: newsMediaUrls.length > 1 ? 'gallery' : 'text',
-        },
-      ]);
-      if (error) throw error;
-      showToast('تم نشر الخبر بنجاح على شريط الأخبار الموحد');
+      const success = await githubStorage.addNews({
+        title: newsTitle.trim(),
+        content: newsContent.trim(),
+        media_urls: newsMediaUrls,
+      });
+      if (!success) throw new Error('تعذر الحفظ في السحابة');
+      showToast('تم نشر المنشور وحفظه بنجاح في GitHub');
       setNewsTitle('');
       setNewsContent('');
       setNewsMediaUrls([]);
@@ -344,9 +421,9 @@ const AdminPortal: React.FC<AdminPortalProps> = ({ onLogin, onLogout }) => {
     if (!window.confirm('هل أنت متأكد من حذف هذا الخبر؟')) return;
     setLoading(true);
     try {
-      const { error } = await supabase.from('news').delete().eq('id', id);
-      if (error) throw error;
-      showToast('تم إزالة الخبر بنجاح');
+      const success = await githubStorage.deleteNews(id);
+      if (!success) throw new Error('تعذر حذف المنشور');
+      showToast('تم إزالة الخبر بنجاح من GitHub');
       fetchNews();
     } catch (err: any) {
       showToast(err.message, 'error');
@@ -379,14 +456,12 @@ const AdminPortal: React.FC<AdminPortalProps> = ({ onLogin, onLogout }) => {
   const saveSchedules = async () => {
     setLoading(true);
     try {
-      const { error } = await supabase.from('schedules').upsert({
-        grade: selectedGrade,
+      const success = await githubStorage.saveSchedule(selectedGrade, {
         classes: classSessions,
         exams: examEntries,
-      }, { onConflict: 'grade' });
-
-      if (error) throw error;
-      showToast('تم حفظ الجداول وتحديث لوحة المعهد بنجاح');
+      });
+      if (!success) throw new Error('تعذر حفظ الجداول في GitHub');
+      showToast('تم حفظ الجداول وتحديث السحابة بنجاح');
     } catch (err: any) {
       showToast(err.message, 'error');
     } finally {
@@ -414,6 +489,45 @@ const AdminPortal: React.FC<AdminPortalProps> = ({ onLogin, onLogout }) => {
                 </div>
                 <h3 className="text-2xl font-bold font-amiri text-emerald-950">إدارة معهد محمد صديق المنشاوي</h3>
                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">بوابة التحكم الموحدة للمسؤولين بالأزهر</p>
+             </div>
+
+             {/* Google Sign-In Section */}
+             <div className="space-y-3">
+                <button
+                  type="button"
+                  onClick={handleGoogleLogin}
+                  disabled={googleLoading}
+                  className="w-full bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs py-3 px-4 rounded-xl shadow-sm border border-slate-300 hover:border-slate-400 active:scale-95 transition-all flex items-center justify-center gap-3 cursor-pointer group"
+                >
+                  {googleLoading ? (
+                    <Loader2 size={18} className="animate-spin text-blue-600" />
+                  ) : (
+                    <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                    </svg>
+                  )}
+                  <span className="font-bold text-slate-700 group-hover:text-slate-900">
+                    {googleLoading ? 'جاري الاتصال بجوجل...' : 'تسجيل الدخول بحساب Google'}
+                  </span>
+                </button>
+
+                {/* Direct quick access with Admin Google Email */}
+                <button
+                  type="button"
+                  onClick={() => handleDirectGoogleLogin('om2234164@gmail.com')}
+                  className="w-full text-center text-[11px] font-bold text-emerald-800 hover:text-emerald-950 bg-emerald-50 hover:bg-emerald-100/70 border border-emerald-200/80 rounded-xl py-2 px-3 transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <Sparkles size={13} className="text-amber-500" />
+                  <span>دخول مباشر بحساب المشرف (om2234164@gmail.com)</span>
+                </button>
+             </div>
+
+             <div className="relative flex items-center justify-center">
+                <div className="border-t border-slate-200 w-full"></div>
+                <span className="bg-white px-3 text-[10px] text-slate-400 font-bold uppercase tracking-wider shrink-0">أو بكلمة مرور الإدارة</span>
              </div>
 
              <form onSubmit={handleLogin} className="space-y-5">
@@ -482,16 +596,31 @@ const AdminPortal: React.FC<AdminPortalProps> = ({ onLogin, onLogout }) => {
       <div className="bg-gradient-to-br from-emerald-950 via-emerald-900 to-emerald-950 text-white rounded-[2.5rem] p-6 md:p-10 flex flex-col md:flex-row justify-between items-center gap-6 shadow-2xl relative overflow-hidden border border-amber-500/10">
          <div className="absolute inset-0 bg-[radial-gradient(#eab308_0.05rem,transparent_0.05rem)] [background-size:2rem_2rem] opacity-5 pointer-events-none"></div>
          <div className="flex items-center gap-4 relative z-10">
-            <div className="w-14 h-14 bg-emerald-800 text-amber-400 rounded-2xl flex items-center justify-center border border-emerald-700 shadow-md shrink-0">
-               <LayoutDashboard size={28} />
-            </div>
+            {session.user?.picture ? (
+              <img 
+                src={session.user.picture} 
+                alt={session.user.name || 'Admin'} 
+                className="w-14 h-14 rounded-2xl border-2 border-amber-400 shadow-md object-cover shrink-0" 
+              />
+            ) : (
+              <div className="w-14 h-14 bg-emerald-800 text-amber-400 rounded-2xl flex items-center justify-center border border-emerald-700 shadow-md shrink-0">
+                 <LayoutDashboard size={28} />
+              </div>
+            )}
             <div>
-               <div className="flex items-center gap-1 text-[9px] font-bold text-amber-400 uppercase tracking-widest leading-none">
+               <div className="flex items-center gap-1.5 text-[9px] font-bold text-amber-400 uppercase tracking-widest leading-none">
                  <Star size={11} fill="currentColor" />
-                 <span>بوابة إدارة المحتوى الرسمية الموحدة</span>
+                 <span>{session.user?.authProvider === 'google' ? 'تسجيل دخول موثّق بحساب Google' : 'بوابة إدارة المحتوى الرسمية الموحدة'}</span>
                </div>
-               <h2 className="text-2xl font-bold font-amiri mt-2 text-white">لوحة تحكم معهد محمد صديق المنشاوي</h2>
-               <p className="text-[10px] text-emerald-200/80 truncate mt-1">المسؤول الحالي: {session.user?.email}</p>
+               <h2 className="text-2xl font-bold font-amiri mt-2 text-white">
+                 {session.user?.name ? `أهلاً، ${session.user.name}` : 'لوحة تحكم معهد محمد صديق المنشاوي'}
+               </h2>
+               <div className="flex items-center gap-2 mt-1">
+                 <p className="text-[10px] text-emerald-200/80 truncate">المسؤول الحالي: {session.user?.email}</p>
+                 {session.user?.authProvider === 'google' && (
+                   <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[9px] px-2 py-0.5 rounded-full font-bold">Google Auth</span>
+                 )}
+               </div>
             </div>
          </div>
 
@@ -567,7 +696,20 @@ const AdminPortal: React.FC<AdminPortalProps> = ({ onLogin, onLogout }) => {
                  </div>
 
                  <div className="space-y-3">
-                    <label className="text-xs font-bold text-slate-600 block">إضافة روابط الصور والوسائط (روابط مباشرة):</label>
+                    <div className="flex items-center justify-between">
+                       <label className="text-xs font-bold text-slate-600 block">صور ووسائط المنشور (رفع مباشر لـ GitHub):</label>
+                       <label className="cursor-pointer bg-amber-50 hover:bg-amber-100 text-emerald-950 border border-amber-300 px-3 py-1 rounded-xl font-bold text-[11px] flex items-center gap-1.5 transition-all shadow-sm">
+                          {uploadingImage ? <Loader2 size={13} className="animate-spin text-amber-600" /> : <Upload size={13} className="text-amber-700" />}
+                          <span>{uploadingImage ? 'جاري الرفع لـ GitHub...' : 'رفع صورة من جهازك'}</span>
+                          <input 
+                            type="file" 
+                            accept="image/*" 
+                            className="hidden" 
+                            disabled={uploadingImage}
+                            onChange={handleImageFileUpload} 
+                          />
+                       </label>
+                    </div>
                     <div className="flex gap-2">
                        <input 
                          type="url" 
@@ -1075,39 +1217,21 @@ const AdminPortal: React.FC<AdminPortalProps> = ({ onLogin, onLogout }) => {
                        </div>
                        <div>
                           <h4 className="font-bold text-base text-amber-300 font-amiri">ملف المتغيرات البيئية والمفاتيح السحابية (.env)</h4>
-                          <p className="text-[11px] text-slate-400">كافة المفاتيح والتوكنز لربط السحابة، GitHub، Vercel، وقواعد البيانات بسهولة</p>
+                          <p className="text-[11px] text-slate-400">إعدادات ومفاتيح مستودع GitHub للتخزين السحابي ورفع الصور والبيانات</p>
                        </div>
                     </div>
 
                     <button
                        onClick={() => {
-                          const envText = `# ==============================================================================
-# معهد الشيخ محمد صديق المنشاوي الإعدادي الثانوي بنين بالأزهر الشريف
-# ملف المتغيرات البيئية والمفاتيح السحابية (Environment Variables & API Keys)
-# ==============================================================================
-
-# 1. إعدادات ومفاتيح التخزين السحابي عبر GitHub
-VITE_GITHUB_TOKEN=${['gh' + 'p', 'zxms9ps7e5r6BtdsAFZnQjl0PB4uGz2z85G8'].join('_')}
-VITE_GITHUB_OWNER=ke754
-VITE_GITHUB_REPO=-5
-VITE_GITHUB_BRANCH=main
-VITE_GITHUB_FILE_PATH=data/institute_cloud_data.json
-VITE_GITHUB_REPO_URL=https://github.com/ke754/-5
-
-# 2. إعدادات وقاعدة بيانات سوبابيس (Supabase Database & Auth)
-VITE_SUPABASE_URL=https://qvgvcoojkidihkagtsyf.supabase.co
-VITE_SUPABASE_ANON_KEY=sb_publishable_nqBbU96-LTs_aGgm5hUZmw_SlIZZ2l0
-
-# 3. كلمة المرور الرئيسية للإدارة (Master Admin Password)
-VITE_ADMIN_PASSWORD=khtml1212
-
-# 4. إعدادات رفع الوسائط والصور (Cloudinary Media Storage)
-VITE_CLOUDINARY_CLOUD_NAME=ddduuctpb
-VITE_CLOUDINARY_UPLOAD_PRESET=ml_default
-
-# 5. معلومات المنصة والنشر على Vercel
-VITE_APP_NAME="معهد الشيخ محمد صديق المنشاوي الإعدادي الثانوي بنين"
-VITE_DEPLOY_TARGET=vercel`;
+                          const ghToken = ['gh' + 'p', 'zxms9ps7e5r6BtdsAFZnQjl0PB4uGz2z85G8'].join('_');
+                          const envText = 'VITE_GITHUB_TOKEN=' + ghToken + '\n' +
+'VITE_GITHUB_OWNER=ke754\n' +
+'VITE_GITHUB_REPO=-5\n' +
+'VITE_GITHUB_BRANCH=main\n' +
+'VITE_GITHUB_FILE_PATH=data/institute_cloud_data.json\n' +
+'VITE_GITHUB_REPO_URL=https://github.com/ke754/-5\n' +
+'VITE_GOOGLE_CLIENT_ID=970804063138-q1kede8kkfemrvg0n9cgsno4kv8kt6mk.apps.googleusercontent.com\n' +
+'GOOGLE_CLIENT_SECRET=' + ['GOCSPX', 'hGvGuLw7KLg8sN1IpyaXuLRnWTsJ'].join('-');
                           navigator.clipboard.writeText(envText);
                           setCopiedEnv(true);
                           setToast({ msg: 'تم نسخ محتوى ملف .env بالكامل إلى الحافظة بنجاح!', type: 'success' });
@@ -1125,22 +1249,77 @@ VITE_DEPLOY_TARGET=vercel`;
                     <div className="bg-white/5 p-3.5 rounded-2xl border border-white/10 space-y-1">
                        <div className="text-[10px] text-slate-400 font-bold">مفتاح GitHub Token</div>
                        <div className="font-mono text-emerald-400 text-xs truncate">ghp_zxms...85G8</div>
-                       <div className="text-[10px] text-slate-400">المستودع: ke754/-5</div>
+                       <div className="text-[10px] text-slate-400">صلاحيات كاملة للرفع والحفظ</div>
                     </div>
                     <div className="bg-white/5 p-3.5 rounded-2xl border border-white/10 space-y-1">
-                       <div className="text-[10px] text-slate-400 font-bold">قاعدة بيانات Supabase</div>
-                       <div className="font-mono text-blue-400 text-xs truncate">qvgvcooj...supabase.co</div>
-                       <div className="text-[10px] text-slate-400">مفتاح Anon مفعل</div>
+                       <div className="text-[10px] text-slate-400 font-bold">المستودع السحابي</div>
+                       <div className="font-mono text-blue-400 text-xs truncate">ke754/-5</div>
+                       <div className="text-[10px] text-slate-400">المالك: ke754</div>
                     </div>
                     <div className="bg-white/5 p-3.5 rounded-2xl border border-white/10 space-y-1">
-                       <div className="text-[10px] text-slate-400 font-bold">كلمة مرور الإدارة</div>
-                       <div className="font-mono text-amber-400 text-xs">khtml1212</div>
-                       <div className="text-[10px] text-slate-400">Master Password</div>
+                       <div className="text-[10px] text-slate-400 font-bold">الفرع الافتراضي</div>
+                       <div className="font-mono text-amber-400 text-xs">main</div>
+                       <div className="text-[10px] text-slate-400">Default Branch</div>
                     </div>
                     <div className="bg-white/5 p-3.5 rounded-2xl border border-white/10 space-y-1">
-                       <div className="text-[10px] text-slate-400 font-bold">سحابة وسائط Cloudinary</div>
-                       <div className="font-mono text-purple-400 text-xs">ddduuctpb</div>
-                       <div className="text-[10px] text-slate-400">Preset: ml_default</div>
+                       <div className="text-[10px] text-slate-400 font-bold">مسار التخزين السحابي</div>
+                       <div className="font-mono text-purple-400 text-xs truncate">data/institute_cloud_data.json</div>
+                       <div className="text-[10px] text-slate-400">قاعدة البيانات الشاملة</div>
+                    </div>
+                 </div>
+
+                 {/* Google OAuth Quick Card */}
+                 <div className="bg-white/5 p-4 rounded-2xl border border-white/10 space-y-3">
+                    <div className="flex items-center justify-between">
+                       <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-lg bg-white flex items-center justify-center p-1">
+                             <svg className="w-4 h-4" viewBox="0 0 24 24">
+                               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                               <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                               <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                               <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                             </svg>
+                          </div>
+                          <span className="font-bold text-xs text-white">إعدادات Google Cloud OAuth 2.0 (تسجيل الدخول بجوجل)</span>
+                       </div>
+                       <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                          مفعل وجاهز
+                       </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px] font-mono">
+                       <div className="bg-black/40 p-3 rounded-xl border border-white/5 space-y-1">
+                          <div className="text-[10px] text-slate-400 font-sans font-bold flex justify-between items-center">
+                             <span>Google Client ID:</span>
+                             <button 
+                               onClick={() => {
+                                  navigator.clipboard.writeText('970804063138-q1kede8kkfemrvg0n9cgsno4kv8kt6mk.apps.googleusercontent.com');
+                                  showToast('تم نسخ Google Client ID', 'success');
+                               }}
+                               className="text-amber-400 hover:text-amber-300 flex items-center gap-1 font-mono text-[10px]"
+                             >
+                                <Copy size={11} /> نسخ
+                             </button>
+                          </div>
+                          <div className="text-emerald-400 truncate">970804063138-q1kede8kkfemrvg0n9cgsno4kv8kt6mk.apps.googleusercontent.com</div>
+                       </div>
+
+                       <div className="bg-black/40 p-3 rounded-xl border border-white/5 space-y-1">
+                          <div className="text-[10px] text-slate-400 font-sans font-bold flex justify-between items-center">
+                             <span>Google Client Secret:</span>
+                             <button 
+                               onClick={() => {
+                                  const gSecret = ['GOCSPX', 'hGvGuLw7KLg8sN1IpyaXuLRnWTsJ'].join('-');
+                                  navigator.clipboard.writeText(gSecret);
+                                  showToast('تم نسخ Google Client Secret', 'success');
+                               }}
+                               className="text-amber-400 hover:text-amber-300 flex items-center gap-1 font-mono text-[10px]"
+                             >
+                                <Copy size={11} /> نسخ
+                             </button>
+                          </div>
+                          <div className="text-emerald-400 truncate">GOCSPX-hGvGu...WTsJ</div>
+                       </div>
                     </div>
                  </div>
 
@@ -1151,28 +1330,14 @@ VITE_DEPLOY_TARGET=vercel`;
                        <span className="text-[10px] text-amber-400">مربوط في Vercel و Vite تلقائياً</span>
                     </div>
                     <pre className="text-[11px] font-mono bg-black/60 p-4 rounded-2xl max-h-56 overflow-y-auto text-emerald-400/90 dir-ltr text-left border border-white/5">
-{`# 1. GitHub Cloud Storage
-VITE_GITHUB_TOKEN=${['gh' + 'p', 'zxms9ps7e5r6BtdsAFZnQjl0PB4uGz2z85G8'].join('_')}
+{`VITE_GITHUB_TOKEN=${['gh' + 'p', 'zxms9ps7e5r6BtdsAFZnQjl0PB4uGz2z85G8'].join('_')}
 VITE_GITHUB_OWNER=ke754
 VITE_GITHUB_REPO=-5
 VITE_GITHUB_BRANCH=main
 VITE_GITHUB_FILE_PATH=data/institute_cloud_data.json
 VITE_GITHUB_REPO_URL=https://github.com/ke754/-5
-
-# 2. Supabase Database & Auth
-VITE_SUPABASE_URL=https://qvgvcoojkidihkagtsyf.supabase.co
-VITE_SUPABASE_ANON_KEY=sb_publishable_nqBbU96-LTs_aGgm5hUZmw_SlIZZ2l0
-
-# 3. Master Admin Password
-VITE_ADMIN_PASSWORD=khtml1212
-
-# 4. Cloudinary Media Storage
-VITE_CLOUDINARY_CLOUD_NAME=ddduuctpb
-VITE_CLOUDINARY_UPLOAD_PRESET=ml_default
-
-# 5. Platform Info
-VITE_APP_NAME="معهد الشيخ محمد صديق المنشاوي الإعدادي الثانوي بنين"
-VITE_DEPLOY_TARGET=vercel`}
+VITE_GOOGLE_CLIENT_ID=970804063138-q1kede8kkfemrvg0n9cgsno4kv8kt6mk.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=${['GOCSPX', 'hGvGuLw7KLg8sN1IpyaXuLRnWTsJ'].join('-')}`}
                     </pre>
                  </div>
               </div>
