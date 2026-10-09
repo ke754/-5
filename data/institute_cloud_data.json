@@ -1,12 +1,13 @@
 {
   "version": "1.0.0",
-  "lastUpdated": "2026-10-09T16:49:02.877Z",
+  "lastUpdated": "2026-10-09T16:50:29.500Z",
   "institute": {
     "name": "معهد الشيخ محمد صديق المنشاوي الإعدادي الثانوي بنين",
     "stage": "المرحلتان الإعدادية والثانوية (بنين فقط)",
     "governorate": "محافظة سوهاج",
     "center": "مركز المنشأة",
-    "patron": "الشيخ محمد صديق المنشاوي (رحمه الله)"
+    "patron": "الشيخ محمد صديق المنشاوي (رحمه الله)",
+    "logoUrl": "https://raw.githubusercontent.com/ke754/-5/main/uploads/1791564626124-0b4d1c9a702817773f9c5ec2626fd70e.jpg"
   },
   "settings": {
     "assemblyTime": "07:45",
