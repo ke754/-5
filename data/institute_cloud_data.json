@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastUpdated": "2026-10-09T11:45:00.000Z",
+  "lastUpdated": "2026-10-09T16:49:02.877Z",
   "institute": {
     "name": "معهد الشيخ محمد صديق المنشاوي الإعدادي الثانوي بنين",
     "stage": "المرحلتان الإعدادية والثانوية (بنين فقط)",
@@ -38,5 +38,27 @@
     "quranScope": "المصحف الشريف كاملاً (114 سورة) مع الترتيل والتجويد",
     "primaryReciter": "الشيخ محمد صديق المنشاوي (مرتل ومجود)",
     "targetStudents": "طلاب بنين فقط (المرحلة الإعدادية والمرحلة الثانوية)"
-  }
+  },
+  "admins": [
+    {
+      "id": "admin-super-1",
+      "email": "om2234164@gmail.com",
+      "name": "OMAR MOSTAFA",
+      "role": "مشرف عام النظام",
+      "avatar": "https://lh3.googleusercontent.com/a/ACg8ocKscvjZPLTAytc1gniF7znPVJGC0GrK4w9RvmQ2TIu020IAW6w=s96-c",
+      "addedAt": "2026-10-09T00:00:00.000Z",
+      "addedBy": "النظام الأساسي",
+      "isSuperAdmin": true
+    },
+    {
+      "id": "admin-super-2",
+      "email": "admin@azhar-menshah.edu.eg",
+      "name": "إدارة معهد المنشاوي الأزهري",
+      "role": "إدارة المعهد",
+      "avatar": "/images/sheikh_minshawi.jpg",
+      "addedAt": "2026-10-09T00:00:00.000Z",
+      "addedBy": "النظام الأساسي",
+      "isSuperAdmin": true
+    }
+  ]
 }
