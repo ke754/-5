@@ -1,0 +1,11 @@
+{
+  "name": "معهد بندر المنشأة الأزهري",
+  "description": "منصة تعليمية شاملة لمعهد بندر المنشأة الأزهري، تشمل المنهج الدراسي للقرآن الكريم وجداول الحصص والامتحانات مع نظام إدارة متكامل.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
