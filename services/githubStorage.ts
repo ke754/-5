@@ -64,10 +64,10 @@ const getInitialToken = (): string => {
 };
 
 const DEFAULT_CONFIG = {
-  owner: 'ke754',
-  repo: '-5',
-  branch: 'main',
-  filePath: 'data/institute_cloud_data.json',
+  owner: (import.meta as any).env?.VITE_GITHUB_OWNER || 'ke754',
+  repo: (import.meta as any).env?.VITE_GITHUB_REPO || '-5',
+  branch: (import.meta as any).env?.VITE_GITHUB_BRANCH || 'main',
+  filePath: (import.meta as any).env?.VITE_GITHUB_FILE_PATH || 'data/institute_cloud_data.json',
   token: getInitialToken(),
 };
 

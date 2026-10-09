@@ -2,16 +2,16 @@ import { Grade, Curriculum, Reciter, Surah, JuzInfo } from './types';
 // @ts-ignore
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
-export const ADMIN_PASSWORD = 'khtml1212';
+export const ADMIN_PASSWORD = (import.meta as any).env?.VITE_ADMIN_PASSWORD || 'khtml1212';
 
 // Supabase Configuration
-const supabaseUrl = 'https://qvgvcoojkidihkagtsyf.supabase.co';
-const supabaseKey = 'sb_publishable_nqBbU96-LTs_aGgm5hUZmw_SlIZZ2l0';
+const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL || 'https://qvgvcoojkidihkagtsyf.supabase.co';
+const supabaseKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || 'sb_publishable_nqBbU96-LTs_aGgm5hUZmw_SlIZZ2l0';
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Cloudinary Configuration
-export const CLOUDINARY_CLOUD_NAME = 'ddduuctpb';
-export const CLOUDINARY_UPLOAD_PRESET = 'ml_default';
+export const CLOUDINARY_CLOUD_NAME = (import.meta as any).env?.VITE_CLOUDINARY_CLOUD_NAME || 'ddduuctpb';
+export const CLOUDINARY_UPLOAD_PRESET = (import.meta as any).env?.VITE_CLOUDINARY_UPLOAD_PRESET || 'ml_default';
 
 // Curated list of premier Azhari & Islamic Reciters from mp3quran.net
 export const RECITERS: Reciter[] = [
