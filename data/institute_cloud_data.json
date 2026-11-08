@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastUpdated": "2026-11-08T11:14:42.553Z",
+  "lastUpdated": "2026-11-08T11:16:22.035Z",
   "institute": {
     "name": "معهد الشيخ محمد صديق المنشاوي الإعدادي الثانوي بنين",
     "stage": "المرحلتان الإعدادية والثانوية (بنين فقط)",
@@ -52,6 +52,15 @@
       "addedAt": "2026-10-09T00:00:00.000Z",
       "addedBy": "النظام الأساسي",
       "isSuperAdmin": true
+    },
+    {
+      "id": "admin-1794136582025",
+      "email": "mostafa.k198200@gmail.com",
+      "name": "مصطفى كامل ابو عمر",
+      "role": "مشرف إدارة",
+      "addedBy": "OMAR MOSTAFA",
+      "addedAt": "2026-11-08T11:16:22.025Z",
+      "isSuperAdmin": false
     }
   ]
 }
