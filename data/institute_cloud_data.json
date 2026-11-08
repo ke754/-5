@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastUpdated": "2026-11-08T11:16:22.035Z",
+  "lastUpdated": "2026-11-08T11:19:25.719Z",
   "institute": {
     "name": "معهد الشيخ محمد صديق المنشاوي الإعدادي الثانوي بنين",
     "stage": "المرحلتان الإعدادية والثانوية (بنين فقط)",
@@ -60,7 +60,8 @@
       "role": "مشرف إدارة",
       "addedBy": "OMAR MOSTAFA",
       "addedAt": "2026-11-08T11:16:22.025Z",
-      "isSuperAdmin": false
+      "isSuperAdmin": false,
+      "avatar": "https://raw.githubusercontent.com/ke754/-5/main/uploads/1794136762227-784251921_1567057071831388_6478803620649693671_n.jpg"
     }
   ]
 }
